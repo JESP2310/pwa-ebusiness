@@ -1,88 +1,207 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#6366f1">
-    <title>WooShop - Loja</title>
-    <link rel="manifest" href="manifest.json">
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%236366f1'/%3E%3Ctext x='50' y='68' font-size='55' text-anchor='middle' fill='white' font-family='Arial'%3EW%3C/text%3E%3C/svg%3E">
-    <link rel="stylesheet" href="css/style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0d9488">
+<title>FraTech</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230d9488'/%3E%3Ctext x='50' y='68' font-size='55' text-anchor='middle' fill='white' font-family='Arial'%3EF%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <canvas id="bgCanvas"></canvas>
 
-    <div class="app">
-        <header class="header">
-            <h1>🛒 WooShop</h1>
-            <div class="header-actions">
-                <button id="btnTema" class="btn-tema" title="Alternar tema">🌙</button>
-                <button id="btnCarrinho" class="btn-carrinho" title="Carrinho">
-                    🛒 <span id="badgeCarrinho" class="badge hidden">0</span>
-                </button>
-            </div>
-        </header>
-
-        <section class="form-section busca-section">
-            <div class="input-group">
-                <input type="text" id="inputBusca" placeholder="Buscar produtos..." maxlength="100">
-            </div>
-        </section>
-
-        <section class="categorias-section">
-            <div id="listaCategorias" class="lista-categorias">
-                <button class="cat-btn active" data-cat="todas">Todos</button>
-            </div>
-        </section>
-
-        <section id="viewHome" class="view active">
-            <div id="gridProdutos" class="grid-produtos"></div>
-            <div id="vazio" class="vazio hidden">
-                <span class="vazio-icon">📦</span>
-                <p>Nenhum produto encontrado</p>
-            </div>
-        </section>
-
-        <section id="viewProduto" class="view">
-            <button class="btn-voltar" onclick="app.voltar()">← Voltar</button>
-            <div id="detalheProduto" class="detalhe-produto"></div>
-        </section>
-
-        <section id="viewCarrinho" class="view">
-            <button class="btn-voltar" onclick="app.mostrarView('home')">← Continuar comprando</button>
-            <h2>🛒 Carrinho</h2>
-            <div id="listaCarrinho" class="lista-carrinho"></div>
-            <div id="totalCarrinho" class="total-carrinho"></div>
-            <button id="btnFinalizar" class="btn-submit">Finalizar Compra no Site</button>
-        </section>
-
-        <section class="stats">
-            <div class="stat">
-                <span id="totalProdutos">0</span>
-                <small>Produtos</small>
-            </div>
-            <div class="stat">
-                <span id="totalCarrinho">0</span>
-                <small>No Carrinho</small>
-            </div>
-        </section>
-
-        <footer class="footer">
-            <p>WooShop PWA</p>
-        </footer>
+<header class="top">
+  <div class="top-inner">
+    <a href="#" class="logo" onclick="app.irHome();return false">FraTech</a>
+    <div class="search-box">
+      <input type="text" id="busca" placeholder="Buscar produtos" autocomplete="off">
+      <button id="btnBuscar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></button>
     </div>
+    <button class="icon-btn" onclick="app.verCarrinho()">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+      <span id="badge" class="hidden">0</span>
+    </button>
+    <button class="icon-btn" onclick="app.irConta()">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    </button>
+  </div>
+</header>
 
-    <div id="modalProduto" class="modal">
-        <div class="modal-content">
-            <button class="btn-fechar" onclick="app.fecharModal()">✕</button>
-            <div id="modalBody"></div>
+<main class="wrap">
+
+  <section id="vHome" class="view active">
+    <div class="cats" id="cats"></div>
+    <div id="loading" class="loading">Carregando produtos...</div>
+    <div class="grid" id="grid"></div>
+    <div id="empty" class="empty hidden">
+      <p>Nenhum produto encontrado.</p>
+      <p class="sub">Verifique a conexão com o WooCommerce.</p>
+    </div>
+  </section>
+
+  <section id="vProduto" class="view">
+    <button class="back" onclick="app.irHome()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg> Voltar</button>
+    <div id="detalheProduto"></div>
+  </section>
+
+  <section id="vCarrinho" class="view">
+    <button class="back" onclick="app.irHome()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg> Continuar comprando</button>
+    <h2 class="page-title">Carrinho</h2>
+    <div id="carrinhoVazio" class="carrinho-vazio">
+      <div class="carrinho-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></div>
+      <p class="carrinho-texto">Seu carrinho está vazio no momento!</p>
+      <button class="btn-primary" onclick="app.irHome()">Ver produtos</button>
+    </div>
+    <div id="carrinhoComItens" class="hidden">
+      <div id="listaCarrinho" class="cart-list"></div>
+      <div id="resumoCarrinho" class="cart-summary"></div>
+      <button class="btn-primary" onclick="app.finalizarCompra()">Finalizar compra</button>
+    </div>
+    <div class="recomendados" id="recomendados">
+      <h3 class="rec-title">Novo na loja</h3>
+      <div class="rec-grid" id="recGrid"></div>
+    </div>
+  </section>
+
+  <section id="vConta" class="view">
+    <div id="loginArea">
+      <h2 class="page-title">Minha conta</h2>
+      <div class="login-box">
+        <div class="input-group">
+          <label>Usuário</label>
+          <input type="text" id="loginUser" placeholder="Seu usuário">
         </div>
+        <div class="input-group">
+          <label>Senha</label>
+          <input type="password" id="loginPass" placeholder="Sua senha">
+        </div>
+        <button class="btn-primary" onclick="app.login()">Entrar</button>
+        <p class="login-hint">Use as mesmas credenciais do site FraTech.</p>
+      </div>
     </div>
+    <div id="contaLogada" class="hidden">
+      <h2 class="page-title">Olá, <span id="nomeUsuario"></span></h2>
+      <p class="conta-sub">A partir do painel de controle de sua conta, você pode ver suas compras recentes, gerenciar seus endereços de entrega e cobrança, e editar sua senha e detalhes da conta.</p>
+      <nav class="conta-menu">
+        <button class="menu-item" onclick="app.irPainel()">
+          <span class="menu-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg></span>
+          <span class="menu-label">Painel</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <button class="menu-item" onclick="app.irPedidos()">
+          <span class="menu-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></span>
+          <span class="menu-label">Pedidos</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <button class="menu-item" onclick="app.irEnderecos()">
+          <span class="menu-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></span>
+          <span class="menu-label">Endereços</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <button class="menu-item" onclick="app.irDetalhes()">
+          <span class="menu-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span>
+          <span class="menu-label">Detalhes da conta</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <button class="menu-item menu-sair" onclick="app.logout()">
+          <span class="menu-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg></span>
+          <span class="menu-label">Sair</span>
+        </button>
+      </nav>
+    </div>
+  </section>
 
-    <div id="toast" class="toast"></div>
+  <section id="vPedidos" class="view">
+    <button class="back" onclick="app.irConta()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg> Minha conta</button>
+    <h2 class="page-title">Pedidos</h2>
+    <div id="listaPedidos"></div>
+  </section>
 
-    <script src="js/db.js"></script>
-    <script src="js/canvas.js"></script>
-    <script src="js/app.js"></script>
+  <section id="vPedidoDetalhe" class="view">
+    <button class="back" onclick="app.irPedidos()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg> Pedidos</button>
+    <h2 class="page-title">Pedido <span id="numPedido"></span></h2>
+    <div id="detalhePedido"></div>
+  </section>
+
+  <section id="vEnderecos" class="view">
+    <button class="back" onclick="app.irConta()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg> Minha conta</button>
+    <h2 class="page-title">Endereços</h2>
+    <p class="endereco-hint">Os endereços a seguir serão usados na página de finalização de compra por padrão.</p>
+    <div class="enderecos-grid">
+      <div class="endereco-card">
+        <h3>Endereço de cobrança</h3>
+        <button class="btn-link" onclick="app.editarEndereco('billing')">Editar Endereço de cobrança</button>
+        <div id="enderecoCobranca" class="endereco-dados"></div>
+      </div>
+      <div class="endereco-card">
+        <h3>Endereço de entrega</h3>
+        <button class="btn-link" onclick="app.editarEndereco('shipping')">Editar Endereço de entrega</button>
+        <div id="enderecoEntrega" class="endereco-dados"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="vEditarEndereco" class="view">
+    <button class="back" onclick="app.irEnderecos()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg> Endereços</button>
+    <h2 class="page-title" id="tituloEditarEndereco">Editar Endereço</h2>
+    <div class="form-endereco">
+      <div class="input-group"><label>Nome</label><input type="text" id="endNome"></div>
+      <div class="input-group"><label>Sobrenome</label><input type="text" id="endSobrenome"></div>
+      <div class="input-group"><label>Empresa (opcional)</label><input type="text" id="endEmpresa"></div>
+      <div class="input-group"><label>País</label><input type="text" id="endPais" value="Brasil"></div>
+      <div class="input-group"><label>Endereço</label><input type="text" id="endRua"></div>
+      <div class="input-group"><label>Cidade</label><input type="text" id="endCidade"></div>
+      <div class="input-group"><label>Estado</label><input type="text" id="endEstado"></div>
+      <div class="input-group"><label>CEP</label><input type="text" id="endCep"></div>
+      <div class="input-group"><label>Telefone</label><input type="text" id="endTelefone"></div>
+      <button class="btn-primary" onclick="app.salvarEndereco()">Salvar endereço</button>
+    </div>
+  </section>
+
+  <section id="vDetalhes" class="view">
+    <button class="back" onclick="app.irConta()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg> Minha conta</button>
+    <h2 class="page-title">Detalhes da conta</h2>
+    <div class="form-conta">
+      <div class="input-group"><label>Nome</label><input type="text" id="detNome"></div>
+      <div class="input-group"><label>Sobrenome</label><input type="text" id="detSobrenome"></div>
+      <div class="input-group"><label>Nome de exibição</label><input type="text" id="detDisplay"></div>
+      <div class="input-group"><label>E-mail</label><input type="email" id="detEmail"></div>
+      <h3 class="form-section-title">Alterar senha</h3>
+      <div class="input-group"><label>Senha atual</label><input type="password" id="detSenhaAtual"></div>
+      <div class="input-group"><label>Nova senha</label><input type="password" id="detSenhaNova"></div>
+      <div class="input-group"><label>Confirmar nova senha</label><input type="password" id="detSenhaConf"></div>
+      <button class="btn-primary" onclick="app.salvarDetalhes()">Salvar alterações</button>
+    </div>
+  </section>
+
+</main>
+
+<nav class="bottom-nav" id="bottomNav">
+  <button class="nav-item active" onclick="app.irHome()">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
+    <span>Início</span>
+  </button>
+  <button class="nav-item" onclick="app.verCarrinho()">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+    <span>Carrinho</span>
+  </button>
+  <button class="nav-item" onclick="app.irConta()">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    <span>Conta</span>
+  </button>
+</nav>
+
+<div id="modal" class="modal" onclick="if(event.target===this)app.fecharModal()">
+  <div class="modal-box">
+    <button class="modal-x" onclick="app.fecharModal()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="js/db.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>

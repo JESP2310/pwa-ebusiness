@@ -1,308 +1,606 @@
-class WooShop {
+class App {
     constructor() {
-        this.config = {
-            url: 'https://seusite.com',
-            consumerKey: 'ck_xxxxxxxxxxxxxxxx',
-            consumerSecret: 'cs_xxxxxxxxxxxxxxxx',
-            perPage: 10
+        this.cfg = {
+            url: 'http://192.168.1.140',
+            ck: 'ck_213ae00bd7b3b0a07d0b4479a413551d02d6e548',
+            cs: 'cs_060bc3a466e1769849df21f1de3da4e32c2c7363',
+            pp: 20
         };
-
-        this.produtos = [];
-        this.categorias = [];
-        this.carrinho = [];
-        this.filtroAtual = 'todas';
-        this.viewAtual = 'home';
+        this.prods = [];
+        this.cats = [];
+        this.filtro = 'todas';
+        this.user = null;
         this.init();
     }
 
     async init() {
         await db.init();
-        this.carregarTema();
-        this.carrinho = db.getCarrinho();
-
         const cache = db.getProdutosCache();
         if (cache) {
-            this.produtos = cache;
-            this.renderizar();
+            this.prods = cache;
+            this.render();
         }
-
-        await this.carregarCategorias();
-        await this.carregarProdutos();
-
-        this.configurarEventos();
-        this.atualizarStats();
+        await this.loadCats();
+        await this.loadProds();
+        this.user = db.getUser();
+        if (this.user) {
+            this.atualizarUIConta();
+        }
+        this.bind();
+        this.updateBadge();
+        this.renderRecomendados();
+        this.render();
     }
 
-    async fetchWC(endpoint) {
-        const url = `${this.config.url}/wp-json/wc/v3/${endpoint}?consumer_key=${this.config.consumerKey}&consumer_secret=${this.config.consumerSecret}&per_page=${this.config.perPage}`;
-
+    async api(endpoint, method, body, auth) {
+        method = method || 'GET';
+        auth = auth || false;
+        let url = this.cfg.url + '/wp-json/wc/v3/' + endpoint;
+        if (endpoint.indexOf('?') === -1) {
+            url += '?consumer_key=' + this.cfg.ck + '&consumer_secret=' + this.cfg.cs;
+        } else {
+            url += '&consumer_key=' + this.cfg.ck + '&consumer_secret=' + this.cfg.cs;
+        }
+        const opts = {
+            method: method,
+            headers: { 'Content-Type': 'application/json' }
+        };
+        if (auth && db.getToken()) {
+            opts.headers['Authorization'] = 'Bearer ' + db.getToken();
+        }
+        if (body) {
+            opts.body = JSON.stringify(body);
+        }
         try {
-            const res = await fetch(url);
-            if (!res.ok) throw new Error('Erro na API');
+            const res = await fetch(url, opts);
+            if (!res.ok) {
+                if (res.status === 401) {
+                    db.logout();
+                    this.user = null;
+                }
+                throw new Error('HTTP ' + res.status);
+            }
             return await res.json();
         } catch (e) {
-            console.error('Fetch error:', e);
+            console.error('API erro:', e);
             return null;
         }
     }
 
-    async carregarProdutos() {
-        const data = await this.fetchWC('products');
+    async apiWP(endpoint, method, body) {
+        method = method || 'GET';
+        const url = this.cfg.url + '/wp-json/wp/v2/' + endpoint;
+        const opts = {
+            method: method,
+            headers: { 'Content-Type': 'application/json' }
+        };
+        if (db.getToken()) {
+            opts.headers['Authorization'] = 'Bearer ' + db.getToken();
+        }
+        if (body) opts.body = JSON.stringify(body);
+        try {
+            const res = await fetch(url, opts);
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return await res.json();
+        } catch (e) {
+            console.error('WP API erro:', e);
+            return null;
+        }
+    }
+
+    async loadProds() {
+        const data = await this.api('products?per_page=' + this.cfg.pp);
         if (data) {
-            this.produtos = data;
+            this.prods = data;
             db.setProdutosCache(data);
-            this.renderizar();
-            this.toast('Catálogo atualizado!', 'sucesso');
-        } else if (this.produtos.length === 0) {
-            this.toast('Sem conexão. Usando cache...', 'erro');
+            this.render();
+            this.renderRecomendados();
         }
     }
 
-    async carregarCategorias() {
-        const data = await this.fetchWC('products/categories');
+    async loadCats() {
+        const data = await this.api('products/categories?per_page=20');
         if (data) {
-            this.categorias = data.filter(c => c.parent === 0);
-            this.renderizarCategorias();
+            this.cats = data.filter(function(c) { return c.parent === 0; });
+            this.renderCats();
         }
     }
 
-    configurarEventos() {
-        document.getElementById('btnTema').addEventListener('click', () => this.alternarTema());
-        document.getElementById('btnCarrinho').addEventListener('click', () => this.mostrarView('carrinho'));
-        document.getElementById('btnFinalizar').addEventListener('click', () => this.finalizarCompra());
-
-        document.getElementById('inputBusca').addEventListener('input', (e) => {
-            this.buscar(e.target.value);
+    bind() {
+        const self = this;
+        document.getElementById('busca').addEventListener('input', function(e) {
+            self.buscar(e.target.value);
+        });
+        document.getElementById('btnBuscar').addEventListener('click', function() {
+            self.buscar(document.getElementById('busca').value);
         });
     }
 
-    mostrarView(view) {
-        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-        document.getElementById(`view${view.charAt(0).toUpperCase() + view.slice(1)}`).classList.add('active');
-        this.viewAtual = view;
-
-        if (view === 'carrinho') this.renderizarCarrinho();
-    }
-
-    voltar() {
-        if (this.viewAtual === 'produto') this.mostrarView('home');
-    }
-
-    renderizar() {
-        const grid = document.getElementById('gridProdutos');
-        const vazio = document.getElementById('vazio');
-
-        let produtos = this.produtos;
-        if (this.filtroAtual !== 'todas') {
-            produtos = produtos.filter(p => p.categories.some(c => c.id == this.filtroAtual));
+    mostrar(id) {
+        const views = document.querySelectorAll('.view');
+        for (let i = 0; i < views.length; i++) {
+            views[i].classList.remove('active');
         }
-
-        if (produtos.length === 0) {
-            grid.innerHTML = '';
-            vazio.classList.remove('hidden');
-            return;
+        document.getElementById(id).classList.add('active');
+        window.scrollTo(0, 0);
+        const navs = document.querySelectorAll('.nav-item');
+        for (let i = 0; i < navs.length; i++) {
+            navs[i].classList.remove('active');
         }
-
-        vazio.classList.add('hidden');
-        grid.innerHTML = produtos.map(p => this.cardProduto(p)).join('');
+        if (id === 'vHome') navs[0] && navs[0].classList.add('active');
+        if (id === 'vCarrinho') navs[1] && navs[1].classList.add('active');
+        if (id === 'vConta') navs[2] && navs[2].classList.add('active');
     }
 
-    cardProduto(p) {
-        const imagem = p.images[0]?.src || 'https://via.placeholder.com/300';
-        const preco = parseFloat(p.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    irHome() { this.mostrar('vHome'); }
 
-        return `
-            <div class="produto-card" data-id="${p.id}">
-                <div class="produto-img" style="background-image: url('${imagem}')"></div>
-                <div class="produto-info">
-                    <h3>${this.escape(p.name)}</h3>
-                    <p class="produto-preco">${preco}</p>
-                    <div class="produto-actions">
-                        <button class="btn-ver" onclick="app.verProduto(${p.id})">Ver</button>
-                        <button class="btn-add" onclick="app.addCarrinho(${p.id})">+ Carrinho</button>
-                    </div>
-                </div>
-            </div>
-        `;
+    verCarrinho() {
+        this.mostrar('vCarrinho');
+        this.renderCart();
     }
 
-    renderizarCategorias() {
-        const container = document.getElementById('listaCategorias');
-        container.innerHTML = '<button class="cat-btn active" data-cat="todas" onclick="app.setFiltro('todas')">Todos</button>' +
-            this.categorias.map(c => `
-                <button class="cat-btn" data-cat="${c.id}" onclick="app.setFiltro(${c.id})">
-                    ${this.escape(c.name)}
-                </button>
-            `).join('');
-    }
-
-    renderizarCarrinho() {
-        const container = document.getElementById('listaCarrinho');
-        const totalDiv = document.getElementById('totalCarrinho');
-        const cart = db.getCarrinho();
-
-        if (cart.length === 0) {
-            container.innerHTML = '<p class="vazio">Carrinho vazio 🛒</p>';
-            totalDiv.innerHTML = '';
-            return;
-        }
-
-        container.innerHTML = cart.map(item => {
-            const preco = parseFloat(item.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            return `
-                <div class="item-carrinho">
-                    <img src="${item.images[0]?.src || ''}" alt="">
-                    <div class="item-info">
-                        <h4>${this.escape(item.name)}</h4>
-                        <p>${preco}</p>
-                    </div>
-                    <div class="item-qtd">
-                        <button onclick="app.updateQtd(${item.id}, ${item.qtd - 1})">-</button>
-                        <span>${item.qtd}</span>
-                        <button onclick="app.updateQtd(${item.id}, ${item.qtd + 1})">+</button>
-                    </div>
-                    <button class="btn-remover" onclick="app.removeCarrinho(${item.id})">🗑️</button>
-                </div>
-            `;
-        }).join('');
-
-        const total = cart.reduce((sum, item) => sum + (parseFloat(item.price) * item.qtd), 0);
-        totalDiv.innerHTML = `<h3>Total: ${total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</h3>`;
-    }
-
-    setFiltro(cat) {
-        this.filtroAtual = cat;
-        document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
-        document.querySelector(`[data-cat="${cat}"]`)?.classList.add('active');
-        this.renderizar();
-    }
-
-    buscar(termo) {
-        if (!termo) {
-            this.renderizar();
-            return;
-        }
-        const grid = document.getElementById('gridProdutos');
-        const vazio = document.getElementById('vazio');
-        const filtrados = this.produtos.filter(p => 
-            p.name.toLowerCase().includes(termo.toLowerCase())
-        );
-
-        if (filtrados.length === 0) {
-            grid.innerHTML = '';
-            vazio.classList.remove('hidden');
+    irConta() {
+        this.mostrar('vConta');
+        if (db.isLoggedIn()) {
+            document.getElementById('loginArea').classList.add('hidden');
+            document.getElementById('contaLogada').classList.remove('hidden');
+            this.atualizarUIConta();
         } else {
-            vazio.classList.add('hidden');
-            grid.innerHTML = filtrados.map(p => this.cardProduto(p)).join('');
+            document.getElementById('loginArea').classList.remove('hidden');
+            document.getElementById('contaLogada').classList.add('hidden');
         }
     }
 
-    verProduto(id) {
-        const p = this.produtos.find(prod => prod.id === id);
-        if (!p) return;
+    irPedidos() {
+        this.mostrar('vPedidos');
+        this.loadPedidos();
+    }
 
-        const modalBody = document.getElementById('modalBody');
-        const imagem = p.images[0]?.src || '';
+    irEnderecos() {
+        this.mostrar('vEnderecos');
+        this.loadEnderecos();
+    }
+
+    irDetalhes() {
+        this.mostrar('vDetalhes');
+        this.loadDetalhesConta();
+    }
+
+    irPainel() {
+        this.irConta();
+    }
+
+    render() {
+        const grid = document.getElementById('grid');
+        const empty = document.getElementById('empty');
+        const loading = document.getElementById('loading');
+        if (loading) loading.classList.add('hidden');
+        let produtos = this.prods;
+        if (this.filtro !== 'todas') {
+            produtos = produtos.filter(function(p) {
+                return p.categories.some(function(c) { return c.id == this.filtro; }.bind(this));
+            }.bind(this));
+        }
+        if (!produtos.length) {
+            if (grid) grid.innerHTML = '';
+            if (empty) empty.classList.remove('hidden');
+            return;
+        }
+        if (empty) empty.classList.add('hidden');
+        if (grid) grid.innerHTML = produtos.map(function(p) { return this.card(p); }.bind(this)).join('');
+    }
+
+    card(p) {
+        const img = p.images && p.images[0] ? p.images[0].src : '';
         const preco = parseFloat(p.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const parcela = (parseFloat(p.price) / 12).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const temDesconto = p.regular_price && p.regular_price !== p.price;
+        const precoAntigo = temDesconto ? parseFloat(p.regular_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '';
+        let html = '<div class="item" data-id="' + p.id + '">';
+        html += '<div class="thumb" style="background-image:url(' + "'" + img + "'" + ')" onclick="app.abrirProduto(' + p.id + ')"></div>';
+        html += '<div class="info">';
+        if (temDesconto) html += '<p class="preco-antigo">' + precoAntigo + '</p>';
+        html += '<p class="preco">' + preco + '</p>';
+        html += '<p class="parc">em 12x ' + parcela + '</p>';
+        html += '<p class="nome" onclick="app.abrirProduto(' + p.id + ')">' + this.esc(p.name) + '</p>';
+        html += '<p class="frete">Frete grátis</p>';
+        html += '<button class="btn-add" onclick="app.addCart(' + p.id + ')">Adicionar ao carrinho</button>';
+        html += '</div></div>';
+        return html;
+    }
 
-        modalBody.innerHTML = `
-            <img src="${imagem}" style="width:100%;border-radius:12px;margin-bottom:16px;">
-            <h2>${this.escape(p.name)}</h2>
-            <p class="produto-preco" style="font-size:1.5rem;margin:12px 0;">${preco}</p>
-            <div style="color:var(--text-secondary);margin-bottom:20px;">${p.short_description || p.description || ''}</div>
-            <button class="btn-submit" onclick="app.addCarrinho(${p.id}); app.fecharModal()">Adicionar ao Carrinho</button>
-        `;
-        document.getElementById('modalProduto').classList.add('active');
+    renderCats() {
+        const container = document.getElementById('cats');
+        if (!container) return;
+        let html = '<button class="pill active" data-c="todas" onclick="app.setFiltro(' + "'" + 'todas' + "'" + ')">Todos</button>';
+        for (let i = 0; i < this.cats.length; i++) {
+            html += '<button class="pill" data-c="' + this.cats[i].id + '" onclick="app.setFiltro(' + this.cats[i].id + ')">' + this.esc(this.cats[i].name) + '</button>';
+        }
+        container.innerHTML = html;
+    }
+
+    setFiltro(v) {
+        this.filtro = v;
+        const pills = document.querySelectorAll('.pill');
+        for (let i = 0; i < pills.length; i++) {
+            pills[i].classList.remove('active');
+        }
+        const ativo = document.querySelector('[data-c="' + v + '"]');
+        if (ativo) ativo.classList.add('active');
+        this.render();
+    }
+
+    buscar(t) {
+        if (!t) { this.render(); return; }
+        const grid = document.getElementById('grid');
+        const empty = document.getElementById('empty');
+        const filtrados = this.prods.filter(function(p) {
+            return p.name.toLowerCase().indexOf(t.toLowerCase()) !== -1;
+        });
+        if (!filtrados.length) {
+            if (grid) grid.innerHTML = '';
+            if (empty) empty.classList.remove('hidden');
+        } else {
+            if (empty) empty.classList.add('hidden');
+            if (grid) grid.innerHTML = filtrados.map(function(p) { return this.card(p); }.bind(this)).join('');
+        }
+    }
+
+    renderRecomendados() {
+        const container = document.getElementById('recGrid');
+        if (!container || !this.prods.length) return;
+        const recs = this.prods.slice(0, 4);
+        container.innerHTML = recs.map(function(p) {
+            const img = p.images && p.images[0] ? p.images[0].src : '';
+            const preco = parseFloat(p.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            return '<div class="rec-item" onclick="app.abrirProduto(' + p.id + ')">' +
+                '<div class="rec-thumb" style="background-image:url(' + "'" + img + "'" + ')"></div>' +
+                '<p class="rec-nome">' + this.esc(p.name) + '</p>' +
+                '<p class="rec-preco">' + preco + '</p>' +
+                '<button class="rec-btn" onclick="event.stopPropagation();app.addCart(' + p.id + ')">Adicionar</button>' +
+                '</div>';
+        }.bind(this)).join('');
+    }
+
+    abrirProduto(id) {
+        const p = this.prods.find(function(x) { return x.id === id; });
+        if (!p) return;
+        const modalBody = document.getElementById('modalBody');
+        const img = p.images && p.images[0] ? p.images[0].src : '';
+        const preco = parseFloat(p.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const parcela = (parseFloat(p.price) / 12).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        modalBody.innerHTML = '<img src="' + img + '" class="m-img" alt="">' +
+            '<h2 class="m-nome">' + this.esc(p.name) + '</h2>' +
+            '<p class="m-preco">' + preco + '</p>' +
+            '<p class="m-parc">em 12x ' + parcela + ' sem juros</p>' +
+            '<div class="m-desc">' + (p.short_description || p.description || '') + '</div>' +
+            '<button class="btn-primary" onclick="app.addCart(' + p.id + '); app.fecharModal()">Adicionar ao carrinho</button>';
+        document.getElementById('modal').classList.add('active');
+        document.body.style.overflow = 'hidden';
     }
 
     fecharModal() {
-        document.getElementById('modalProduto').classList.remove('active');
+        document.getElementById('modal').classList.remove('active');
+        document.body.style.overflow = '';
     }
 
-    addCarrinho(id) {
-        const p = this.produtos.find(prod => prod.id === id);
+    addCart(id) {
+        const p = this.prods.find(function(x) { return x.id === id; });
         if (!p) return;
         db.addToCart(p);
-        this.atualizarStats();
-        this.toast('Adicionado ao carrinho!', 'sucesso');
+        this.updateBadge();
+        this.toast('Adicionado ao carrinho');
     }
 
-    removeCarrinho(id) {
+    removeCart(id) {
         db.removeFromCart(id);
-        this.renderizarCarrinho();
-        this.atualizarStats();
-        this.toast('Removido do carrinho', 'info');
+        this.renderCart();
+        this.updateBadge();
+        this.toast('Removido do carrinho');
     }
 
-    updateQtd(id, qtd) {
-        db.updateQtd(id, qtd);
-        this.renderizarCarrinho();
-        this.atualizarStats();
+    changeQtd(id, n) {
+        db.updateQtd(id, n);
+        this.renderCart();
+        this.updateBadge();
+    }
+
+    renderCart() {
+        const cart = db.getCart();
+        const vazio = document.getElementById('carrinhoVazio');
+        const comItens = document.getElementById('carrinhoComItens');
+        const lista = document.getElementById('listaCarrinho');
+        const resumo = document.getElementById('resumoCarrinho');
+        if (!cart.length) {
+            if (vazio) vazio.classList.remove('hidden');
+            if (comItens) comItens.classList.add('hidden');
+            return;
+        }
+        if (vazio) vazio.classList.add('hidden');
+        if (comItens) comItens.classList.remove('hidden');
+        if (lista) {
+            lista.innerHTML = cart.map(function(i) {
+                const preco = parseFloat(i.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                const img = i.images && i.images[0] ? i.images[0].src : '';
+                return '<div class="c-item">' +
+                    '<img src="' + img + '" alt="" class="c-img">' +
+                    '<div class="c-info">' +
+                    '<p class="c-nome">' + this.esc(i.name) + '</p>' +
+                    '<p class="c-preco">' + preco + '</p>' +
+                    '</div>' +
+                    '<div class="c-qtd">' +
+                    '<button onclick="app.changeQtd(' + i.id + ',' + (i.qtd - 1) + ')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg></button>' +
+                    '<span>' + i.qtd + '</span>' +
+                    '<button onclick="app.changeQtd(' + i.id + ',' + (i.qtd + 1) + ')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>' +
+                    '</div>' +
+                    '<button class="c-del" onclick="app.removeCart(' + i.id + ')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>' +
+                    '</div>';
+            }.bind(this)).join('');
+        }
+        if (resumo) {
+            const total = cart.reduce(function(s, i) { return s + (parseFloat(i.price) * i.qtd); }, 0);
+            resumo.innerHTML = '<div class="r-row"><span>Total</span><span>' + total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) + '</span></div>';
+        }
     }
 
     finalizarCompra() {
-        const cart = db.getCarrinho();
-        if (cart.length === 0) {
-            this.toast('Carrinho vazio!', 'erro');
+        if (!db.getCart().length) {
+            this.toast('Carrinho vazio');
             return;
         }
-        window.location.href = `${this.config.url}/finalizar-compra`;
+        window.location.href = this.cfg.url + '/finalizar-compra';
     }
 
-    carregarTema() {
-        const tema = localStorage.getItem('wooshop-tema') || 'dark';
-        document.documentElement.setAttribute('data-theme', tema);
-        this.atualizarIconeTema(tema);
+    updateBadge() {
+        const b = document.getElementById('badge');
+        const n = db.getCart().reduce(function(s, i) { return s + i.qtd; }, 0);
+        b.textContent = n;
+        b.classList.toggle('hidden', n === 0);
     }
 
-    alternarTema() {
-        const atual = document.documentElement.getAttribute('data-theme');
-        const novo = atual === 'light' ? 'dark' : 'light';
-        document.documentElement.setAttribute('data-theme', novo);
-        localStorage.setItem('wooshop-tema', novo);
-        this.atualizarIconeTema(novo);
+    esc(t) {
+        const d = document.createElement('div');
+        d.textContent = t;
+        return d.innerHTML;
     }
 
-    atualizarIconeTema(tema) {
-        const btn = document.getElementById('btnTema');
-        if (btn) btn.textContent = tema === 'light' ? '☀️' : '🌙';
+    toast(m) {
+        const t = document.getElementById('toast');
+        t.textContent = m;
+        t.classList.add('show');
+        setTimeout(function() { t.classList.remove('show'); }, 2200);
     }
 
-    atualizarStats() {
-        const totalProd = document.getElementById('totalProdutos');
-        const totalCart = document.getElementById('totalCarrinho');
-        const badge = document.getElementById('badgeCarrinho');
-        const cart = db.getCarrinho();
-        const qtdCart = cart.reduce((sum, item) => sum + item.qtd, 0);
-
-        if (totalProd) totalProd.textContent = this.produtos.length;
-        if (totalCart) totalCart.textContent = qtdCart;
-        if (badge) {
-            badge.textContent = qtdCart;
-            badge.classList.toggle('hidden', qtdCart === 0);
+    // ===== LOGIN / AUTH =====
+    async login() {
+        const user = document.getElementById('loginUser').value.trim();
+        const pass = document.getElementById('loginPass').value;
+        if (!user || !pass) {
+            this.toast('Preencha usuário e senha');
+            return;
+        }
+        try {
+            const res = await fetch(this.cfg.url + '/wp-json/jwt-auth/v1/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: user, password: pass })
+            });
+            const data = await res.json();
+            if (data.token) {
+                db.setToken(data.token);
+                db.setUser({ id: data.user_id, name: data.user_display_name, email: data.user_email });
+                this.user = db.getUser();
+                this.atualizarUIConta();
+                this.toast('Bem-vindo, ' + this.user.name);
+            } else {
+                this.toast('Login inválido');
+            }
+        } catch (e) {
+            this.toast('Erro ao fazer login');
         }
     }
 
-    escape(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+    logout() {
+        db.logout();
+        this.user = null;
+        this.irConta();
+        this.toast('Você saiu da conta');
     }
 
-    toast(msg, tipo = 'info') {
-        const toast = document.getElementById('toast');
-        if (!toast) return;
-        toast.textContent = msg;
-        toast.className = `toast ${tipo}`;
-        void toast.offsetWidth;
-        toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 2500);
+    atualizarUIConta() {
+        const nomeEl = document.getElementById('nomeUsuario');
+        if (nomeEl && this.user) {
+            nomeEl.textContent = this.user.name;
+        }
+    }
+
+    // ===== PEDIDOS =====
+    async loadPedidos() {
+        const container = document.getElementById('listaPedidos');
+        if (!db.isLoggedIn()) {
+            container.innerHTML = '<p class="empty">Faça login para ver seus pedidos.</p>';
+            return;
+        }
+        container.innerHTML = '<p class="loading">Carregando pedidos...</p>';
+        const data = await this.api('orders?customer=' + this.user.id, 'GET', null, true);
+        if (!data || !data.length) {
+            container.innerHTML = '<p class="empty">Nenhum pedido encontrado.</p>';
+            return;
+        }
+        container.innerHTML = '<div class="pedidos-table">' +
+            '<div class="pedidos-header">' +
+            '<span>Pedido</span><span>Data</span><span>Status</span><span>Total</span><span>Ações</span>' +
+            '</div>' +
+            data.map(function(o) {
+                const data = new Date(o.date_created).toLocaleDateString('pt-BR');
+                const total = parseFloat(o.total).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                const statusClass = 'status-' + o.status;
+                const statusText = {
+                    'processing': 'Processando',
+                    'completed': 'Concluído',
+                    'pending': 'Pendente',
+                    'cancelled': 'Cancelado',
+                    'on-hold': 'Aguardando'
+                }[o.status] || o.status;
+                return '<div class="pedido-row">' +
+                    '<span class="pedido-num">#' + o.id + '</span>' +
+                    '<span>' + data + '</span>' +
+                    '<span class="pedido-status ' + statusClass + '">' + statusText + '</span>' +
+                    '<span>' + total + ' de ' + o.line_items.length + ' item(s)</span>' +
+                    '<button class="btn-ver" onclick="app.verPedido(' + o.id + ')">Visualizar</button>' +
+                    '</div>';
+            }).join('') + '</div>';
+    }
+
+    async verPedido(id) {
+        this.mostrar('vPedidoDetalhe');
+        document.getElementById('numPedido').textContent = '#' + id;
+        const container = document.getElementById('detalhePedido');
+        container.innerHTML = '<p class="loading">Carregando...</p>';
+        const data = await this.api('orders/' + id, 'GET', null, true);
+        if (!data) {
+            container.innerHTML = '<p class="empty">Erro ao carregar pedido.</p>';
+            return;
+        }
+        const dataPedido = new Date(data.date_created).toLocaleDateString('pt-BR');
+        const total = parseFloat(data.total).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const statusText = {
+            'processing': 'Processando',
+            'completed': 'Concluído',
+            'pending': 'Pendente',
+            'cancelled': 'Cancelado',
+            'on-hold': 'Aguardando'
+        }[data.status] || data.status;
+
+        let itensHtml = data.line_items.map(function(item) {
+            const preco = parseFloat(item.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            return '<div class="pedido-item">' +
+                '<span>' + item.name + ' x ' + item.quantity + '</span>' +
+                '<span>' + preco + '</span>' +
+                '</div>';
+        }).join('');
+
+        container.innerHTML = '<div class="pedido-detalhe">' +
+            '<div class="pedido-info-row"><span>Data:</span><span>' + dataPedido + '</span></div>' +
+            '<div class="pedido-info-row"><span>Status:</span><span class="pedido-status status-' + data.status + '">' + statusText + '</span></div>' +
+            '<div class="pedido-info-row"><span>Total:</span><span>' + total + '</span></div>' +
+            '<h3>Itens</h3>' + itensHtml +
+            '<h3>Endereço de entrega</h3>' +
+            '<div class="pedido-endereco">' + this.formatarEndereco(data.shipping) + '</div>' +
+            '</div>';
+    }
+
+    // ===== ENDEREÇOS =====
+    async loadEnderecos() {
+        if (!db.isLoggedIn()) return;
+        const data = await this.api('customers/' + this.user.id, 'GET', null, true);
+        if (!data) return;
+        const cobranca = document.getElementById('enderecoCobranca');
+        const entrega = document.getElementById('enderecoEntrega');
+        if (cobranca) cobranca.innerHTML = this.formatarEndereco(data.billing);
+        if (entrega) entrega.innerHTML = this.formatarEndereco(data.shipping);
+    }
+
+    formatarEndereco(end) {
+        if (!end || !end.first_name) return '<p>Endereço não cadastrado.</p>';
+        return '<p><strong>' + this.esc(end.first_name) + ' ' + this.esc(end.last_name) + '</strong></p>' +
+            '<p>' + this.esc(end.address_1) + '</p>' +
+            '<p>' + this.esc(end.city) + '</p>' +
+            '<p>' + this.esc(end.state) + '</p>' +
+            '<p>' + this.esc(end.postcode) + '</p>';
+    }
+
+    editarEndereco(tipo) {
+        this.tipoEnderecoEditando = tipo;
+        this.mostrar('vEditarEndereco');
+        document.getElementById('tituloEditarEndereco').textContent = tipo === 'billing' ? 'Editar Endereço de Cobrança' : 'Editar Endereço de Entrega';
+        // Preenche com dados atuais se disponível
+        if (db.isLoggedIn()) {
+            this.api('customers/' + this.user.id, 'GET', null, true).then(function(data) {
+                if (data) {
+                    const end = tipo === 'billing' ? data.billing : data.shipping;
+                    if (end) {
+                        document.getElementById('endNome').value = end.first_name || '';
+                        document.getElementById('endSobrenome').value = end.last_name || '';
+                        document.getElementById('endEmpresa').value = end.company || '';
+                        document.getElementById('endPais').value = end.country || 'Brasil';
+                        document.getElementById('endRua').value = end.address_1 || '';
+                        document.getElementById('endCidade').value = end.city || '';
+                        document.getElementById('endEstado').value = end.state || '';
+                        document.getElementById('endCep').value = end.postcode || '';
+                        document.getElementById('endTelefone').value = end.phone || '';
+                    }
+                }
+            });
+        }
+    }
+
+    async salvarEndereco() {
+        const end = {
+            first_name: document.getElementById('endNome').value,
+            last_name: document.getElementById('endSobrenome').value,
+            company: document.getElementById('endEmpresa').value,
+            country: document.getElementById('endPais').value,
+            address_1: document.getElementById('endRua').value,
+            city: document.getElementById('endCidade').value,
+            state: document.getElementById('endEstado').value,
+            postcode: document.getElementById('endCep').value,
+            phone: document.getElementById('endTelefone').value
+        };
+        const body = {};
+        body[this.tipoEnderecoEditando] = end;
+        const res = await this.api('customers/' + this.user.id, 'PUT', body, true);
+        if (res) {
+            this.toast('Endereço salvo com sucesso');
+            this.irEnderecos();
+        } else {
+            this.toast('Erro ao salvar endereço');
+        }
+    }
+
+    // ===== DETALHES DA CONTA =====
+    async loadDetalhesConta() {
+        if (!db.isLoggedIn()) return;
+        const data = await this.api('customers/' + this.user.id, 'GET', null, true);
+        if (!data) return;
+        document.getElementById('detNome').value = data.first_name || '';
+        document.getElementById('detSobrenome').value = data.last_name || '';
+        document.getElementById('detDisplay').value = data.username || '';
+        document.getElementById('detEmail').value = data.email || '';
+    }
+
+    async salvarDetalhes() {
+        const body = {
+            first_name: document.getElementById('detNome').value,
+            last_name: document.getElementById('detSobrenome').value,
+            username: document.getElementById('detDisplay').value,
+            email: document.getElementById('detEmail').value
+        };
+        const senhaAtual = document.getElementById('detSenhaAtual').value;
+        const senhaNova = document.getElementById('detSenhaNova').value;
+        const senhaConf = document.getElementById('detSenhaConf').value;
+        if (senhaNova) {
+            if (senhaNova !== senhaConf) {
+                this.toast('As senhas não coincidem');
+                return;
+            }
+            // Para alterar senha, precisa de endpoint específico do WP
+            // Simplificando: apenas salva os dados básicos
+        }
+        const res = await this.api('customers/' + this.user.id, 'PUT', body, true);
+        if (res) {
+            this.toast('Dados salvos com sucesso');
+            this.user.name = body.first_name + ' ' + body.last_name;
+            db.setUser(this.user);
+        } else {
+            this.toast('Erro ao salvar dados');
+        }
     }
 }
 
 let app;
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => app = new WooShop());
+    document.addEventListener('DOMContentLoaded', function() { app = new App(); });
 } else {
-    app = new WooShop();
+    app = new App();
 }

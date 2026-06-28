@@ -1,10 +1,10 @@
 {
-    "name": "WooShop - Minha Loja",
-    "short_name": "WooShop",
-    "description": "Loja PWA conectada ao WooCommerce",
+    "name": "FraTech",
+    "short_name": "FraTech",
+    "description": "Loja PWA - FraTech",
     "start_url": "/",
     "display": "standalone",
-    "background_color": "#0f172a",
-    "theme_color": "#6366f1",
+    "background_color": "#f3f4f6",
+    "theme_color": "#0d9488",
     "orientation": "portrait-primary"
 }
