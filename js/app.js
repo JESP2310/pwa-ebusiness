@@ -1,7 +1,8 @@
 class App {
     constructor() {
         this.cfg = {
-            url: 'http://192.168.1.140',
+            // A sua URL do ngrok
+            url: 'https://fragile-tracing-lard.ngrok-free.dev', 
             ck: 'ck_213ae00bd7b3b0a07d0b4479a413551d02d6e548',
             cs: 'cs_060bc3a466e1769849df21f1de3da4e32c2c7363',
             pp: 20
@@ -32,25 +33,41 @@ class App {
         this.render();
     }
 
+    // NOVA FUNÇÃO: Substitui o IP local pelo link do ngrok nas imagens
+    corrigirImg(url) {
+        if (!url) return '';
+        return url.replace('http://192.168.1.91', this.cfg.url)
+                  .replace('https://192.168.1.91', this.cfg.url);
+    }
+
     async api(endpoint, method, body, auth) {
         method = method || 'GET';
         auth = auth || false;
+        
         let url = this.cfg.url + '/wp-json/wc/v3/' + endpoint;
+        
         if (endpoint.indexOf('?') === -1) {
             url += '?consumer_key=' + this.cfg.ck + '&consumer_secret=' + this.cfg.cs;
         } else {
             url += '&consumer_key=' + this.cfg.ck + '&consumer_secret=' + this.cfg.cs;
         }
+        
         const opts = {
             method: method,
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true' 
+            }
         };
+        
         if (auth && db.getToken()) {
             opts.headers['Authorization'] = 'Bearer ' + db.getToken();
         }
+        
         if (body) {
             opts.body = JSON.stringify(body);
         }
+        
         try {
             const res = await fetch(url, opts);
             if (!res.ok) {
@@ -72,7 +89,10 @@ class App {
         const url = this.cfg.url + '/wp-json/wp/v2/' + endpoint;
         const opts = {
             method: method,
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true'
+            }
         };
         if (db.getToken()) {
             opts.headers['Authorization'] = 'Bearer ' + db.getToken();
@@ -191,7 +211,8 @@ class App {
     }
 
     card(p) {
-        const img = p.images && p.images[0] ? p.images[0].src : '';
+        // IMAGEM CORRIGIDA AQUI
+        const img = p.images && p.images[0] ? this.corrigirImg(p.images[0].src) : '';
         const preco = parseFloat(p.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         const parcela = (parseFloat(p.price) / 12).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         const temDesconto = p.regular_price && p.regular_price !== p.price;
@@ -251,7 +272,8 @@ class App {
         if (!container || !this.prods.length) return;
         const recs = this.prods.slice(0, 4);
         container.innerHTML = recs.map(function(p) {
-            const img = p.images && p.images[0] ? p.images[0].src : '';
+            // IMAGEM CORRIGIDA AQUI
+            const img = p.images && p.images[0] ? this.corrigirImg(p.images[0].src) : '';
             const preco = parseFloat(p.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             return '<div class="rec-item" onclick="app.abrirProduto(' + p.id + ')">' +
                 '<div class="rec-thumb" style="background-image:url(' + "'" + img + "'" + ')"></div>' +
@@ -266,7 +288,8 @@ class App {
         const p = this.prods.find(function(x) { return x.id === id; });
         if (!p) return;
         const modalBody = document.getElementById('modalBody');
-        const img = p.images && p.images[0] ? p.images[0].src : '';
+        // IMAGEM CORRIGIDA AQUI
+        const img = p.images && p.images[0] ? this.corrigirImg(p.images[0].src) : '';
         const preco = parseFloat(p.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         const parcela = (parseFloat(p.price) / 12).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         modalBody.innerHTML = '<img src="' + img + '" class="m-img" alt="">' +
@@ -321,7 +344,8 @@ class App {
         if (lista) {
             lista.innerHTML = cart.map(function(i) {
                 const preco = parseFloat(i.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                const img = i.images && i.images[0] ? i.images[0].src : '';
+                // IMAGEM CORRIGIDA AQUI
+                const img = i.images && i.images[0] ? this.corrigirImg(i.images[0].src) : '';
                 return '<div class="c-item">' +
                     '<img src="' + img + '" alt="" class="c-img">' +
                     '<div class="c-info">' +
@@ -382,7 +406,10 @@ class App {
         try {
             const res = await fetch(this.cfg.url + '/wp-json/jwt-auth/v1/token', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'ngrok-skip-browser-warning': 'true'
+                },
                 body: JSON.stringify({ username: user, password: pass })
             });
             const data = await res.json();
@@ -490,7 +517,6 @@ class App {
             '</div>';
     }
 
-    // ===== ENDEREÇOS =====
     async loadEnderecos() {
         if (!db.isLoggedIn()) return;
         const data = await this.api('customers/' + this.user.id, 'GET', null, true);
@@ -514,7 +540,6 @@ class App {
         this.tipoEnderecoEditando = tipo;
         this.mostrar('vEditarEndereco');
         document.getElementById('tituloEditarEndereco').textContent = tipo === 'billing' ? 'Editar Endereço de Cobrança' : 'Editar Endereço de Entrega';
-        // Preenche com dados atuais se disponível
         if (db.isLoggedIn()) {
             this.api('customers/' + this.user.id, 'GET', null, true).then(function(data) {
                 if (data) {
@@ -558,7 +583,6 @@ class App {
         }
     }
 
-    // ===== DETALHES DA CONTA =====
     async loadDetalhesConta() {
         if (!db.isLoggedIn()) return;
         const data = await this.api('customers/' + this.user.id, 'GET', null, true);
@@ -584,8 +608,6 @@ class App {
                 this.toast('As senhas não coincidem');
                 return;
             }
-            // Para alterar senha, precisa de endpoint específico do WP
-            // Simplificando: apenas salva os dados básicos
         }
         const res = await this.api('customers/' + this.user.id, 'PUT', body, true);
         if (res) {
