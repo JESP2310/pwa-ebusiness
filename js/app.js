@@ -1,8 +1,7 @@
 class App {
     constructor() {
         this.cfg = {
-            // A sua URL do ngrok
-            url: 'https://fragile-tracing-lard.ngrok-free.dev', 
+            url: 'https://192.168.1.140', 
             ck: 'ck_213ae00bd7b3b0a07d0b4479a413551d02d6e548',
             cs: 'cs_060bc3a466e1769849df21f1de3da4e32c2c7363',
             pp: 20
@@ -33,11 +32,26 @@ class App {
         this.render();
     }
 
-    // NOVA FUNÇÃO: Substitui o IP local pelo link do ngrok nas imagens
+    // FUNÇÃO ATUALIZADA: Garante que a imagem tenha sempre https:// e o caminho absoluto
     corrigirImg(url) {
         if (!url) return '';
-        return url.replace('http://192.168.1.91', this.cfg.url)
-                  .replace('https://192.168.1.91', this.cfg.url);
+        
+        // 1. Substitui qualquer versão do IP antigo pelo link correto da configuração
+        let novaUrl = url.replace('http://192.168.1.140', this.cfg.url)
+                         .replace('https://192.168.1.140', this.cfg.url)
+                         .replace('192.168.1.91', this.cfg.url); // Cobre o caso de vir sem http
+        
+        // 2. Se a URL nova começar com o IP sem o protocolo, forçamos o https://
+        if (novaUrl.startsWith('192.168.')) {
+            novaUrl = 'https://' + novaUrl;
+        }
+
+        // 3. Se a URL for apenas um caminho relativo (ex: /wp-content/...), junta com o IP
+        if (novaUrl.startsWith('/')) {
+            novaUrl = this.cfg.url + novaUrl;
+        }
+        
+        return novaUrl;
     }
 
     async api(endpoint, method, body, auth) {
