@@ -32,21 +32,17 @@ class App {
         this.render();
     }
 
-    // FUNÇÃO ATUALIZADA: Garante que a imagem tenha sempre https:// e o caminho absoluto
     corrigirImg(url) {
         if (!url) return '';
         
-        // 1. Substitui qualquer versão do IP antigo pelo link correto da configuração
         let novaUrl = url.replace('http://192.168.1.140', this.cfg.url)
                          .replace('https://192.168.1.140', this.cfg.url)
                          .replace('192.168.1.91', this.cfg.url); // Cobre o caso de vir sem http
         
-        // 2. Se a URL nova começar com o IP sem o protocolo, forçamos o https://
         if (novaUrl.startsWith('192.168.')) {
             novaUrl = 'https://' + novaUrl;
         }
 
-        // 3. Se a URL for apenas um caminho relativo (ex: /wp-content/...), junta com o IP
         if (novaUrl.startsWith('/')) {
             novaUrl = this.cfg.url + novaUrl;
         }
@@ -225,7 +221,6 @@ class App {
     }
 
     card(p) {
-        // IMAGEM CORRIGIDA AQUI
         const img = p.images && p.images[0] ? this.corrigirImg(p.images[0].src) : '';
         const preco = parseFloat(p.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         const parcela = (parseFloat(p.price) / 12).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -358,7 +353,6 @@ class App {
         if (lista) {
             lista.innerHTML = cart.map(function(i) {
                 const preco = parseFloat(i.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                // IMAGEM CORRIGIDA AQUI
                 const img = i.images && i.images[0] ? this.corrigirImg(i.images[0].src) : '';
                 return '<div class="c-item">' +
                     '<img src="' + img + '" alt="" class="c-img">' +
@@ -409,7 +403,6 @@ class App {
         setTimeout(function() { t.classList.remove('show'); }, 2200);
     }
 
-    // ===== LOGIN / AUTH =====
     async login() {
         const user = document.getElementById('loginUser').value.trim();
         const pass = document.getElementById('loginPass').value;
@@ -455,7 +448,6 @@ class App {
         }
     }
 
-    // ===== PEDIDOS =====
     async loadPedidos() {
         const container = document.getElementById('listaPedidos');
         if (!db.isLoggedIn()) {
