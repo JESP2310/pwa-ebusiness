@@ -2,9 +2,10 @@
     "name": "FraTech",
     "short_name": "FraTech",
     "description": "Loja PWA - FraTech",
-    "start_url": "/",
+    "start_url": "https://jesp2310.github.io/pwa-ebusiness/",
     "display": "standalone",
     "background_color": "#f3f4f6",
     "theme_color": "#0d9488",
-    "orientation": "portrait-primary"
+    "orientation": "portrait-primary",
+    "scope": "https://jesp2310.github.io/pwa-ebusiness/"
 }
