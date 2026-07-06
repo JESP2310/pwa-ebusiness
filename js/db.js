@@ -3,8 +3,6 @@ class DB {
         this.keyProdutos = 'fratech_produtos';
         this.keyCarrinho = 'fratech_carrinho';
         this.keyCache = 'fratech_cache_time';
-        this.keyToken = 'fratech_token';
-        this.keyUser = 'fratech_user';
     }
 
     async init() {
@@ -61,40 +59,6 @@ class DB {
     setProdutosCache(produtos) {
         localStorage.setItem(this.keyProdutos, JSON.stringify(produtos));
         localStorage.setItem(this.keyCache, Date.now().toString());
-    }
-
-    getToken() {
-        return localStorage.getItem(this.keyToken);
-    }
-
-    setToken(token) {
-        localStorage.setItem(this.keyToken, token);
-    }
-
-    clearToken() {
-        localStorage.removeItem(this.keyToken);
-    }
-
-    getUser() {
-        const data = localStorage.getItem(this.keyUser);
-        return data ? JSON.parse(data) : null;
-    }
-
-    setUser(user) {
-        localStorage.setItem(this.keyUser, JSON.stringify(user));
-    }
-
-    clearUser() {
-        localStorage.removeItem(this.keyUser);
-    }
-
-    isLoggedIn() {
-        return !!this.getToken();
-    }
-
-    logout() {
-        this.clearToken();
-        this.clearUser();
     }
 }
 

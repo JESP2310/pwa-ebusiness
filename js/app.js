@@ -9,7 +9,6 @@ class App {
         this.prods = [];
         this.cats = [];
         this.filtro = 'todas';
-        this.user = null;
         this.init();
     }
 
@@ -22,10 +21,6 @@ class App {
         }
         await this.loadCats();
         await this.loadProds();
-        this.user = db.getUser();
-        if (this.user) {
-            this.atualizarUIConta();
-        }
         this.bind();
         this.updateBadge();
         this.renderRecomendados();
@@ -34,25 +29,22 @@ class App {
 
     corrigirImg(url) {
         if (!url) return '';
-        
         let novaUrl = url.replace('http://192.168.1.140', this.cfg.url)
                          .replace('https://192.168.1.140', this.cfg.url)
-                         .replace('192.168.1.91', this.cfg.url); // Cobre o caso de vir sem http
+                         .replace('192.168.1.91', this.cfg.url);
         
         if (novaUrl.startsWith('192.168.')) {
-            novaUrl = 'https://' + novaUrl;
+            novaUrl = 'http://' + novaUrl;
         }
 
         if (novaUrl.startsWith('/')) {
             novaUrl = this.cfg.url + novaUrl;
         }
-        
         return novaUrl;
     }
 
-    async api(endpoint, method, body, auth) {
+    async api(endpoint, method, body) {
         method = method || 'GET';
-        auth = auth || false;
         
         let url = this.cfg.url + '/wp-json/wc/v3/' + endpoint;
         
@@ -70,10 +62,6 @@ class App {
             }
         };
         
-        if (auth && db.getToken()) {
-            opts.headers['Authorization'] = 'Bearer ' + db.getToken();
-        }
-        
         if (body) {
             opts.body = JSON.stringify(body);
         }
@@ -81,39 +69,11 @@ class App {
         try {
             const res = await fetch(url, opts);
             if (!res.ok) {
-                if (res.status === 401) {
-                    db.logout();
-                    this.user = null;
-                }
                 throw new Error('HTTP ' + res.status);
             }
             return await res.json();
         } catch (e) {
             console.error('API erro:', e);
-            return null;
-        }
-    }
-
-    async apiWP(endpoint, method, body) {
-        method = method || 'GET';
-        const url = this.cfg.url + '/wp-json/wp/v2/' + endpoint;
-        const opts = {
-            method: method,
-            headers: { 
-                'Content-Type': 'application/json',
-                'ngrok-skip-browser-warning': 'true'
-            }
-        };
-        if (db.getToken()) {
-            opts.headers['Authorization'] = 'Bearer ' + db.getToken();
-        }
-        if (body) opts.body = JSON.stringify(body);
-        try {
-            const res = await fetch(url, opts);
-            if (!res.ok) throw new Error('HTTP ' + res.status);
-            return await res.json();
-        } catch (e) {
-            console.error('WP API erro:', e);
             return null;
         }
     }
@@ -151,15 +111,16 @@ class App {
         for (let i = 0; i < views.length; i++) {
             views[i].classList.remove('active');
         }
-        document.getElementById(id).classList.add('active');
+        const target = document.getElementById(id);
+        if(target) target.classList.add('active');
         window.scrollTo(0, 0);
+        
         const navs = document.querySelectorAll('.nav-item');
         for (let i = 0; i < navs.length; i++) {
             navs[i].classList.remove('active');
         }
         if (id === 'vHome') navs[0] && navs[0].classList.add('active');
         if (id === 'vCarrinho') navs[1] && navs[1].classList.add('active');
-        if (id === 'vConta') navs[2] && navs[2].classList.add('active');
     }
 
     irHome() { this.mostrar('vHome'); }
@@ -169,42 +130,12 @@ class App {
         this.renderCart();
     }
 
-    irConta() {
-        this.mostrar('vConta');
-        if (db.isLoggedIn()) {
-            document.getElementById('loginArea').classList.add('hidden');
-            document.getElementById('contaLogada').classList.remove('hidden');
-            this.atualizarUIConta();
-        } else {
-            document.getElementById('loginArea').classList.remove('hidden');
-            document.getElementById('contaLogada').classList.add('hidden');
-        }
-    }
-
-    irPedidos() {
-        this.mostrar('vPedidos');
-        this.loadPedidos();
-    }
-
-    irEnderecos() {
-        this.mostrar('vEnderecos');
-        this.loadEnderecos();
-    }
-
-    irDetalhes() {
-        this.mostrar('vDetalhes');
-        this.loadDetalhesConta();
-    }
-
-    irPainel() {
-        this.irConta();
-    }
-
     render() {
         const grid = document.getElementById('grid');
         const empty = document.getElementById('empty');
         const loading = document.getElementById('loading');
         if (loading) loading.classList.add('hidden');
+        
         let produtos = this.prods;
         if (this.filtro !== 'todas') {
             produtos = produtos.filter(function(p) {
@@ -281,7 +212,6 @@ class App {
         if (!container || !this.prods.length) return;
         const recs = this.prods.slice(0, 4);
         container.innerHTML = recs.map(function(p) {
-            // IMAGEM CORRIGIDA AQUI
             const img = p.images && p.images[0] ? this.corrigirImg(p.images[0].src) : '';
             const preco = parseFloat(p.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             return '<div class="rec-item" onclick="app.abrirProduto(' + p.id + ')">' +
@@ -297,7 +227,6 @@ class App {
         const p = this.prods.find(function(x) { return x.id === id; });
         if (!p) return;
         const modalBody = document.getElementById('modalBody');
-        // IMAGEM CORRIGIDA AQUI
         const img = p.images && p.images[0] ? this.corrigirImg(p.images[0].src) : '';
         const preco = parseFloat(p.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         const parcela = (parseFloat(p.price) / 12).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -380,7 +309,157 @@ class App {
             this.toast('Carrinho vazio');
             return;
         }
-        window.location.href = this.cfg.url + '/finalizar-compra';
+        
+        this.mostrar('vCheckout');
+        this.renderResumoCheckout();
+    }
+
+    renderResumoCheckout() {
+        const cart = db.getCart();
+        const container = document.getElementById('chkResumoPedido');
+        
+        let html = '<h3 style="margin-bottom: 15px; font-size: 16px; color: #333;">Resumo do pedido</h3>';
+        
+        let total = 0;
+        cart.forEach(item => {
+            const preco = parseFloat(item.price);
+            const subtotalItem = preco * item.qtd;
+            total += subtotalItem;
+            
+            const img = item.images && item.images[0] ? this.corrigirImg(item.images[0].src) : '';
+            
+            html += `<div style="display: flex; align-items: center; justify-content: space-between; font-size: 14px; margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 12px;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <img src="${img}" style="width: 45px; height: 45px; object-fit: cover; border-radius: 6px; border: 1px solid #eaeaea;">
+                            <span style="color: #444;">${item.qtd}x ${this.esc(item.name)}</span>
+                        </div>
+                        <span style="font-weight: 600; color: #222;">${subtotalItem.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                     </div>`;
+        });
+        
+        html += `<div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 16px; margin-top: 15px; padding-top: 15px; border-top: 2px solid #ddd; color: #111;">
+                    <span>Total</span>
+                    <span>${total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                 </div>`;
+                 
+        container.innerHTML = html;
+    }
+
+    async processarPedido() {
+        const btn = document.querySelector('#vCheckout .btn-primary');
+        const email = document.getElementById('chkEmail').value;
+        const nome = document.getElementById('chkNome').value;
+        const sobrenome = document.getElementById('chkSobrenome').value;
+        const rua = document.getElementById('chkRua').value;
+        const cidade = document.getElementById('chkCidade').value;
+        
+        if(!email || !nome || !rua || !cidade) {
+            this.toast('Por favor, preencha os campos obrigatórios (E-mail, Nome, Endereço e Cidade).');
+            return;
+        }
+
+        btn.textContent = 'Processando...';
+        btn.disabled = true;
+
+        const cart = db.getCart();
+        
+        const line_items = cart.map(item => {
+            return {
+                product_id: item.id,
+                quantity: item.qtd
+            };
+        });
+
+        const billingInfo = {
+            first_name: nome,
+            last_name: sobrenome,
+            address_1: rua,
+            city: cidade,
+            state: document.getElementById('chkEstado').value,
+            postcode: document.getElementById('chkCep').value,
+            country: 'BR',
+            email: email,
+            phone: document.getElementById('chkTelefone').value
+        };
+
+        const dadosPedido = {
+            payment_method: "cod",
+            payment_method_title: "Pagamento na entrega",
+            set_paid: false,
+            billing: billingInfo,
+            shipping: billingInfo,
+            line_items: line_items
+        };
+
+        const res = await this.api('orders', 'POST', dadosPedido);
+
+        btn.textContent = 'Finalizar pedido';
+        btn.disabled = false;
+
+        if (res && res.id) {
+            this.toast(`Sucesso! Pedido #${res.id} realizado.`);
+            db.clearCart();
+            this.updateBadge();
+            
+            this.mostrarPedidoRecebido(res);
+        } else {
+            this.toast('Erro ao processar pedido. Verifique os dados ou tente novamente.');
+            console.error('Erro no pedido:', res);
+        }
+    }
+
+    mostrarPedidoRecebido(pedido) {
+        this.mostrar('vPedidoRecebido');
+
+        const dataObj = new Date(pedido.date_created);
+        const meses = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+        const dataFormatada = `${meses[dataObj.getMonth()]} ${dataObj.getDate()}, ${dataObj.getFullYear()}`;
+        
+        const total = parseFloat(pedido.total).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+        document.getElementById('reciboInfo').innerHTML = `
+            <p><strong>Pedido #:</strong> ${pedido.id}</p>
+            <p><strong>Data:</strong> ${dataFormatada}</p>
+            <p><strong>Total:</strong> ${total}</p>
+            <p><strong>E-mail:</strong> ${pedido.billing.email}</p>
+            <p><strong>Pagamento:</strong> ${pedido.payment_method_title}</p>
+        `;
+
+        let itensHtml = `
+            <div style="display: flex; justify-content: space-between; font-weight: bold; padding-bottom: 12px; border-bottom: 1px solid #ddd; margin-bottom: 12px; color: #111;">
+                <span>Produto</span>
+                <span>Total</span>
+            </div>
+        `;
+        
+        pedido.line_items.forEach(item => {
+            const sub = parseFloat(item.total).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            itensHtml += `
+                <div style="display: flex; justify-content: space-between; padding-bottom: 12px; border-bottom: 1px solid #eee; margin-bottom: 12px; font-size: 14px; color: #333;">
+                    <span>${this.esc(item.name)} <strong style="color: #111;">× ${item.quantity}</strong></span>
+                    <span>${sub}</span>
+                </div>
+            `;
+        });
+        
+        itensHtml += `
+            <div style="display: flex; justify-content: space-between; font-weight: bold; padding-top: 5px; color: #111;">
+                <span>Total:</span>
+                <span>${total}</span>
+            </div>
+        `;
+        document.getElementById('reciboDetalhes').innerHTML = itensHtml;
+
+        const b = pedido.billing;
+        document.getElementById('reciboEndereco').innerHTML = `
+            <p style="margin: 0 0 5px 0;">${this.esc(b.first_name)} ${this.esc(b.last_name)}</p>
+            <p style="margin: 0 0 5px 0;">${this.esc(b.address_1)}</p>
+            <p style="margin: 0 0 5px 0;">${this.esc(b.city)}</p>
+            <p style="margin: 0 0 5px 0;">${this.esc(b.state)}</p>
+            <p style="margin: 0 0 5px 0;">${this.esc(b.postcode)}</p>
+            <p style="margin: 0 0 15px 0;">${this.esc(b.phone)}</p>
+            <p style="margin: 0; color: #555;">Pagar em dinheiro na entrega.</p>
+        `;
     }
 
     updateBadge() {
@@ -402,228 +481,6 @@ class App {
         t.classList.add('show');
         setTimeout(function() { t.classList.remove('show'); }, 2200);
     }
-
-    async login() {
-        const user = document.getElementById('loginUser').value.trim();
-        const pass = document.getElementById('loginPass').value;
-        if (!user || !pass) {
-            this.toast('Preencha usuário e senha');
-            return;
-        }
-        try {
-            const res = await fetch(this.cfg.url + '/wp-json/jwt-auth/v1/token', {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'ngrok-skip-browser-warning': 'true'
-                },
-                body: JSON.stringify({ username: user, password: pass })
-            });
-            const data = await res.json();
-            if (data.token) {
-                db.setToken(data.token);
-                db.setUser({ id: data.user_id, name: data.user_display_name, email: data.user_email });
-                this.user = db.getUser();
-                this.atualizarUIConta();
-                this.toast('Bem-vindo, ' + this.user.name);
-            } else {
-                this.toast('Login inválido');
-            }
-        } catch (e) {
-            this.toast('Erro ao fazer login');
-        }
-    }
-
-    logout() {
-        db.logout();
-        this.user = null;
-        this.irConta();
-        this.toast('Você saiu da conta');
-    }
-
-    atualizarUIConta() {
-        const nomeEl = document.getElementById('nomeUsuario');
-        if (nomeEl && this.user) {
-            nomeEl.textContent = this.user.name;
-        }
-    }
-
-    async loadPedidos() {
-        const container = document.getElementById('listaPedidos');
-        if (!db.isLoggedIn()) {
-            container.innerHTML = '<p class="empty">Faça login para ver seus pedidos.</p>';
-            return;
-        }
-        container.innerHTML = '<p class="loading">Carregando pedidos...</p>';
-        const data = await this.api('orders?customer=' + this.user.id, 'GET', null, true);
-        if (!data || !data.length) {
-            container.innerHTML = '<p class="empty">Nenhum pedido encontrado.</p>';
-            return;
-        }
-        container.innerHTML = '<div class="pedidos-table">' +
-            '<div class="pedidos-header">' +
-            '<span>Pedido</span><span>Data</span><span>Status</span><span>Total</span><span>Ações</span>' +
-            '</div>' +
-            data.map(function(o) {
-                const data = new Date(o.date_created).toLocaleDateString('pt-BR');
-                const total = parseFloat(o.total).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                const statusClass = 'status-' + o.status;
-                const statusText = {
-                    'processing': 'Processando',
-                    'completed': 'Concluído',
-                    'pending': 'Pendente',
-                    'cancelled': 'Cancelado',
-                    'on-hold': 'Aguardando'
-                }[o.status] || o.status;
-                return '<div class="pedido-row">' +
-                    '<span class="pedido-num">#' + o.id + '</span>' +
-                    '<span>' + data + '</span>' +
-                    '<span class="pedido-status ' + statusClass + '">' + statusText + '</span>' +
-                    '<span>' + total + ' de ' + o.line_items.length + ' item(s)</span>' +
-                    '<button class="btn-ver" onclick="app.verPedido(' + o.id + ')">Visualizar</button>' +
-                    '</div>';
-            }).join('') + '</div>';
-    }
-
-    async verPedido(id) {
-        this.mostrar('vPedidoDetalhe');
-        document.getElementById('numPedido').textContent = '#' + id;
-        const container = document.getElementById('detalhePedido');
-        container.innerHTML = '<p class="loading">Carregando...</p>';
-        const data = await this.api('orders/' + id, 'GET', null, true);
-        if (!data) {
-            container.innerHTML = '<p class="empty">Erro ao carregar pedido.</p>';
-            return;
-        }
-        const dataPedido = new Date(data.date_created).toLocaleDateString('pt-BR');
-        const total = parseFloat(data.total).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        const statusText = {
-            'processing': 'Processando',
-            'completed': 'Concluído',
-            'pending': 'Pendente',
-            'cancelled': 'Cancelado',
-            'on-hold': 'Aguardando'
-        }[data.status] || data.status;
-
-        let itensHtml = data.line_items.map(function(item) {
-            const preco = parseFloat(item.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            return '<div class="pedido-item">' +
-                '<span>' + item.name + ' x ' + item.quantity + '</span>' +
-                '<span>' + preco + '</span>' +
-                '</div>';
-        }).join('');
-
-        container.innerHTML = '<div class="pedido-detalhe">' +
-            '<div class="pedido-info-row"><span>Data:</span><span>' + dataPedido + '</span></div>' +
-            '<div class="pedido-info-row"><span>Status:</span><span class="pedido-status status-' + data.status + '">' + statusText + '</span></div>' +
-            '<div class="pedido-info-row"><span>Total:</span><span>' + total + '</span></div>' +
-            '<h3>Itens</h3>' + itensHtml +
-            '<h3>Endereço de entrega</h3>' +
-            '<div class="pedido-endereco">' + this.formatarEndereco(data.shipping) + '</div>' +
-            '</div>';
-    }
-
-    async loadEnderecos() {
-        if (!db.isLoggedIn()) return;
-        const data = await this.api('customers/' + this.user.id, 'GET', null, true);
-        if (!data) return;
-        const cobranca = document.getElementById('enderecoCobranca');
-        const entrega = document.getElementById('enderecoEntrega');
-        if (cobranca) cobranca.innerHTML = this.formatarEndereco(data.billing);
-        if (entrega) entrega.innerHTML = this.formatarEndereco(data.shipping);
-    }
-
-    formatarEndereco(end) {
-        if (!end || !end.first_name) return '<p>Endereço não cadastrado.</p>';
-        return '<p><strong>' + this.esc(end.first_name) + ' ' + this.esc(end.last_name) + '</strong></p>' +
-            '<p>' + this.esc(end.address_1) + '</p>' +
-            '<p>' + this.esc(end.city) + '</p>' +
-            '<p>' + this.esc(end.state) + '</p>' +
-            '<p>' + this.esc(end.postcode) + '</p>';
-    }
-
-    editarEndereco(tipo) {
-        this.tipoEnderecoEditando = tipo;
-        this.mostrar('vEditarEndereco');
-        document.getElementById('tituloEditarEndereco').textContent = tipo === 'billing' ? 'Editar Endereço de Cobrança' : 'Editar Endereço de Entrega';
-        if (db.isLoggedIn()) {
-            this.api('customers/' + this.user.id, 'GET', null, true).then(function(data) {
-                if (data) {
-                    const end = tipo === 'billing' ? data.billing : data.shipping;
-                    if (end) {
-                        document.getElementById('endNome').value = end.first_name || '';
-                        document.getElementById('endSobrenome').value = end.last_name || '';
-                        document.getElementById('endEmpresa').value = end.company || '';
-                        document.getElementById('endPais').value = end.country || 'Brasil';
-                        document.getElementById('endRua').value = end.address_1 || '';
-                        document.getElementById('endCidade').value = end.city || '';
-                        document.getElementById('endEstado').value = end.state || '';
-                        document.getElementById('endCep').value = end.postcode || '';
-                        document.getElementById('endTelefone').value = end.phone || '';
-                    }
-                }
-            });
-        }
-    }
-
-    async salvarEndereco() {
-        const end = {
-            first_name: document.getElementById('endNome').value,
-            last_name: document.getElementById('endSobrenome').value,
-            company: document.getElementById('endEmpresa').value,
-            country: document.getElementById('endPais').value,
-            address_1: document.getElementById('endRua').value,
-            city: document.getElementById('endCidade').value,
-            state: document.getElementById('endEstado').value,
-            postcode: document.getElementById('endCep').value,
-            phone: document.getElementById('endTelefone').value
-        };
-        const body = {};
-        body[this.tipoEnderecoEditando] = end;
-        const res = await this.api('customers/' + this.user.id, 'PUT', body, true);
-        if (res) {
-            this.toast('Endereço salvo com sucesso');
-            this.irEnderecos();
-        } else {
-            this.toast('Erro ao salvar endereço');
-        }
-    }
-
-    async loadDetalhesConta() {
-        if (!db.isLoggedIn()) return;
-        const data = await this.api('customers/' + this.user.id, 'GET', null, true);
-        if (!data) return;
-        document.getElementById('detNome').value = data.first_name || '';
-        document.getElementById('detSobrenome').value = data.last_name || '';
-        document.getElementById('detDisplay').value = data.username || '';
-        document.getElementById('detEmail').value = data.email || '';
-    }
-
-    async salvarDetalhes() {
-        const body = {
-            first_name: document.getElementById('detNome').value,
-            last_name: document.getElementById('detSobrenome').value,
-            username: document.getElementById('detDisplay').value,
-            email: document.getElementById('detEmail').value
-        };
-        const senhaAtual = document.getElementById('detSenhaAtual').value;
-        const senhaNova = document.getElementById('detSenhaNova').value;
-        const senhaConf = document.getElementById('detSenhaConf').value;
-        if (senhaNova) {
-            if (senhaNova !== senhaConf) {
-                this.toast('As senhas não coincidem');
-                return;
-            }
-        }
-        const res = await this.api('customers/' + this.user.id, 'PUT', body, true);
-        if (res) {
-            this.toast('Dados salvos com sucesso');
-            this.user.name = body.first_name + ' ' + body.last_name;
-            db.setUser(this.user);
-        } else {
-            this.toast('Erro ao salvar dados');
-        }
-    }
 }
 
 let app;
@@ -631,4 +488,16 @@ if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() { app = new App(); });
 } else {
     app = new App();
+}
+
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+            .then(registration => {
+                console.log('Service Worker registrado com sucesso no escopo:', registration.scope);
+            })
+            .catch(error => {
+                console.error('Falha ao registrar o Service Worker:', error);
+            });
+    });
 }
